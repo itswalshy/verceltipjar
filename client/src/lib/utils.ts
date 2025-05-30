@@ -40,10 +40,15 @@ export async function readFileAsDataURL(file: File): Promise<string> {
 }
 
 export const calculateHourlyRate = (totalAmount: number, totalHours: number): number => {
-  if (totalHours === 0) return 0;
+  // Validate inputs to prevent division by zero and negative values
+  if (totalHours <= 0) return 0;
+  if (totalAmount <= 0) return 0;
   
   // Calculate the hourly rate without any rounding
   const hourlyRate = totalAmount / totalHours;
+  
+  // Safety check for NaN or Infinity
+  if (!isFinite(hourlyRate)) return 0;
   
   // Truncate to exactly 2 decimal places (1.376859286560484 becomes 1.37)
   // Without any rounding at all

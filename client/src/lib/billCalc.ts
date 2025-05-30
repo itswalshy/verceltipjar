@@ -39,6 +39,14 @@ export function roundAndCalculateBills(payout: number): {
   rounded: number;
   billBreakdown: Array<{denomination: number, quantity: number}>;
 } {
+  // Handle invalid inputs
+  if (!isFinite(payout) || payout < 0) {
+    return {
+      rounded: 0,
+      billBreakdown: []
+    };
+  }
+  
   const rounded = roundToNearestDollar(payout);
   const billBreakdown = calculateBillBreakdown(rounded);
   

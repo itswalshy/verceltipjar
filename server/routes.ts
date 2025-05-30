@@ -99,6 +99,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { partnerHours, totalAmount, totalHours, hourlyRate } = req.body;
       
+      // Validate input values
+      if (!Array.isArray(partnerHours) || partnerHours.length === 0) {
+        return res.status(400).json({ error: "Partner hours data is missing or empty" });
+      }
+      
+      if (totalAmount <= 0 || !isFinite(totalAmount)) {
+        return res.status(400).json({ error: "Total amount must be a positive number" });
+      }
+      
+      if (totalHours <= 0 || !isFinite(totalHours)) {
+        return res.status(400).json({ error: "Total hours must be a positive number" });
+      }
+      
+      if (hourlyRate <= 0 || !isFinite(hourlyRate)) {
+        return res.status(400).json({ error: "Hourly rate must be a positive number" });
+      }
+      
       // Validate partner hours
       try {
         partnerHoursSchema.parse(partnerHours);
@@ -109,6 +126,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Calculate payout for each partner
       const partnerPayouts = partnerHours.map(partner => {
         const payout = calculatePayout(partner.hours, hourlyRate);
+        
+        if (!isFinite(payout) || payout < 0) {
+          throw new Error(`Invalid payout calculation for partner ${partner.name}`);
+        }
+        
         const { rounded, billBreakdown } = roundAndCalculateBills(payout);
         
         return {
@@ -130,7 +152,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(distributionData);
     } catch (error) {
       console.error("Distribution calculation error:", error);
-      res.status(500).json({ error: "Failed to calculate distribution" });
+      const errorMessage = error instanceof Error ? error.message : "Failed to calculate distribution";
+      res.status(500).json({ error: errorMessage });
     }
   });
   
