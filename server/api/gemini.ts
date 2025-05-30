@@ -41,7 +41,7 @@ export async function analyzeImage(imageBase64: string): Promise<{text: string |
     console.log("Found Gemini API key: " + (apiKey ? "[API KEY PRESENT]" : "[MISSING]"));
     
     // Change to v1 API endpoint instead of beta for more stability
-    const apiUrl = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro-vision:generateContent";
+    const apiUrl = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent";
     
     const promptText = `
       Extract ALL TEXT from this image first. Then identify and extract ALL partner names and their tippable hours from the text.
