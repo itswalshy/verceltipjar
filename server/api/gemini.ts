@@ -26,7 +26,8 @@ interface GeminiError {
  */
 export async function analyzeImage(imageBase64: string): Promise<{text: string | null; error?: string}> {
   try {
-    const apiKey = process.env.GEMINI_API_KEY || "";
+    // Access environment variables in Netlify Functions
+    const apiKey = process.env.GEMINI_API_KEY || process.env.NETLIFY_GEMINI_API_KEY || "";
     
     if (!apiKey) {
       console.error("No Gemini API key provided");
@@ -36,7 +37,11 @@ export async function analyzeImage(imageBase64: string): Promise<{text: string |
       };
     }
     
-    const apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+    // Log that we found the API key (but don't log the actual key)
+    console.log("Found Gemini API key: " + (apiKey ? "[API KEY PRESENT]" : "[MISSING]"));
+    
+    // Change to v1 API endpoint instead of beta for more stability
+    const apiUrl = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro-vision:generateContent";
     
     const promptText = `
       Extract ALL TEXT from this image first. Then identify and extract ALL partner names and their tippable hours from the text.
@@ -57,6 +62,7 @@ export async function analyzeImage(imageBase64: string): Promise<{text: string |
       If hours are not explicitly labeled, look for numeric values near names that could represent hours.
     `;
     
+    // Updated request format for more reliable OCR processing
     const requestBody = {
       contents: [
         {
@@ -74,11 +80,30 @@ export async function analyzeImage(imageBase64: string): Promise<{text: string |
         }
       ],
       generationConfig: {
-        temperature: 0.2,
-        topP: 0.9,
-        topK: 40,
-        maxOutputTokens: 2048,
-      }
+        temperature: 0.1,        // Lower temperature for more predictable results
+        topP: 0.95,              // Slightly higher top_p for better diversity
+        topK: 32,                // Adjusted for balance
+        maxOutputTokens: 4096,   // Increased max tokens for more complete extraction
+        stopSequences: []        // No stop sequences
+      },
+      safetySettings: [
+        {
+          category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+          threshold: "BLOCK_NONE"
+        },
+        {
+          category: "HARM_CATEGORY_HATE_SPEECH",
+          threshold: "BLOCK_NONE"
+        },
+        {
+          category: "HARM_CATEGORY_HARASSMENT",
+          threshold: "BLOCK_NONE"
+        },
+        {
+          category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+          threshold: "BLOCK_NONE"
+        }
+      ]
     };
     
     const response = await fetch(`${apiUrl}?key=${apiKey}`, {
@@ -93,18 +118,47 @@ export async function analyzeImage(imageBase64: string): Promise<{text: string |
       const errorText = await response.text();
       let errorMessage = "Failed to call Gemini API";
       
+      console.log(`Gemini API response status: ${response.status}`);
+      // Log response headers in a way compatible with older JavaScript versions
+      const headerObj: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        headerObj[key] = value;
+      });
+      console.log(`Response headers: ${JSON.stringify(headerObj)}`);
+      
       try {
         const errorData = JSON.parse(errorText) as GeminiError;
         if (errorData.error?.message) {
           errorMessage = errorData.error.message;
           // Hide the API key if it's in the error message
           errorMessage = errorMessage.replace(/api_key:[a-zA-Z0-9-_]+/, "api_key:[REDACTED]");
+          console.error("Parsed Gemini API error:", JSON.stringify(errorData.error));
         }
       } catch (e) {
-        // If error parsing fails, use the generic message
+        // If error parsing fails, log the raw error
+        console.error("Failed to parse error JSON:", errorText);
       }
       
       console.error("Gemini API error:", response.status, errorText);
+      
+      // Special handling for common error codes
+      if (response.status === 400) {
+        return { 
+          text: null, 
+          error: `Bad request to Gemini API. Check your API key permissions and image format.`
+        };
+      } else if (response.status === 403) {
+        return { 
+          text: null, 
+          error: `Authentication error. Your Gemini API key may be invalid or missing Vision API permissions.`
+        };
+      } else if (response.status === 429) {
+        return { 
+          text: null, 
+          error: `Gemini API quota exceeded. Please try again later or check your API key limits.`
+        };
+      }
+      
       return { 
         text: null, 
         error: `API Error (${response.status}): ${errorMessage}`

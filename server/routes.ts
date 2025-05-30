@@ -1,4 +1,22 @@
-import type { Express } from "express";
+import type { Express, Request } from "express";
+import type { FileFilterCallback } from "multer";
+
+// Define the multer request type with file property
+interface MulterFile {
+  fieldname: string;
+  originalname: string;
+  encoding: string;
+  mimetype: string;
+  size: number;
+  destination?: string;
+  filename?: string;
+  path?: string;
+  buffer: Buffer;
+}
+
+interface MulterRequest extends Request {
+  file?: MulterFile;
+}
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import multer from "multer";
@@ -20,20 +38,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // API routes
   
   // OCR Processing endpoint
-  app.post("/api/ocr", upload.single("image"), async (req, res) => {
+  app.post("/api/ocr", upload.single("image"), async (req: MulterRequest, res) => {
+    console.log("OCR request received");
     try {
       if (!req.file) {
+        console.log("No image file provided in request");
         return res.status(400).json({ error: "No image file provided" });
       }
       
+      console.log(`Image received: ${req.file.originalname}, ${req.file.size} bytes`);
+      
       // Convert image buffer to base64
       const imageBase64 = req.file.buffer.toString("base64");
+      console.log(`Image converted to base64, length: ${imageBase64.length} chars`);
       
       // Use Gemini API to analyze the image
+      console.log("Calling Gemini API...");
       const result = await analyzeImage(imageBase64);
+      console.log(`Gemini API response received: ${result.text ? 'Success' : 'Failed'}`);
       
       if (!result.text) {
         // Return a specific error message from the API if available
+        console.error("Gemini API error:", result.error);
         return res.status(500).json({ 
           error: result.error || "Failed to extract text from image",
           suggestManualEntry: true
@@ -41,19 +67,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Parse extracted text to get partner hours
+      console.log("Parsing extracted text for partner hours");
       const partnerHours = extractPartnerHours(result.text);
+      console.log(`Found ${partnerHours.length} partners with hours`);
       
       // Format the extracted text for display
       const formattedText = formatOCRResult(result.text);
       
+      console.log("OCR processing completed successfully");
       res.json({
         extractedText: formattedText,
         partnerHours
       });
     } catch (error) {
       console.error("OCR processing error:", error);
+      // Send more detailed error information
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : 'No stack trace';
+      console.error(`Error details: ${errorMessage}\n${errorStack}`);
+      
       res.status(500).json({ 
         error: "Failed to process the image. Please try manual entry instead.",
+        details: errorMessage,
         suggestManualEntry: true 
       });
     }
